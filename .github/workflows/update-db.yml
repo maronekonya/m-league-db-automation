@@ -1,0 +1,59 @@
+
+name: Update M-League Database
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-db:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check latest upstream release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh api repos/konoui/m-league-game-db/releases/latest --jq .tag_name)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream release: $TAG"
+
+      - name: Check saved database version
+        id: saved
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY=$(gh release view db-latest --json body --jq .body 2>/dev/null || true)
+          SAVED_TAG=$(printf '%s\n' "$BODY" | sed -n 's/^Source release tag: //p' | head -n 1)
+          echo "tag=$SAVED_TAG" >> "$GITHUB_OUTPUT"
+          echo "Saved upstream release: ${SAVED_TAG:-none}"
+
+      - name: Download updated database
+        if: steps.upstream.outputs.tag != steps.saved.outputs.tag
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/konoui/m-league-game-db/releases/latest/download/duckdb.zip \
+            --output duckdb.zip
+          unzip -t duckdb.zip
+
+      - name: Create or update database release
+        if: steps.upstream.outputs.tag != steps.saved.outputs.tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          NOTES="Source release tag: ${SOURCE_TAG}"
+
+          if gh release view db-latest >/dev/null 2>&1; then
+            gh release upload db-latest duckdb.zip --clobber
+            gh release edit db-latest --title "Latest M-League Database" --notes "$NOTES"
+          else
+            gh release create db-latest duckdb.zip \
+              --title "Latest M-League Database" \
+              --notes "$NOTES"
+          fi
