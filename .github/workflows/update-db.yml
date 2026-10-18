@@ -3,7 +3,8 @@ name: Update M-League Database
 
 on:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "0 8,9,12 * * *"
+      timezone: "Asia/Tokyo"
   workflow_dispatch:
 
 permissions:
